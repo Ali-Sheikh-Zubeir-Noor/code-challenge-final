@@ -1,4 +1,4 @@
-from lib.db.connection import get_connection
+from search_db_conn import get_connection
 from lib.models.author import Author
 
 class Magazine:

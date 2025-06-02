@@ -1,5 +1,5 @@
 
-from lib.db.connection import get_connection
+from search_db_conn import get_connection
 
 class Article:
     def __init__(self, id=None, title=None, author_id=None, magazine_id=None):

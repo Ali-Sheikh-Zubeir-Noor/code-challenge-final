@@ -1,8 +1,9 @@
+# Auto-generated absolute class imports
 from lib.models.author import Author
 from lib.models.magazine import Magazine
 from lib.models.article import Article
 
-from lib.db.connection import get_connection
+from search_db_conn import get_connection
 import sqlite3
 import pytest
 import os
@@ -10,7 +11,7 @@ from faker import Faker
 from random import random
 
 if not callable(globals().get("get_connection")):
-    from lib.db.connection import get_connection
+    from search_db_conn import get_connection
 
 def insert_values(tbl, vals={}):
     conn = get_connection()
