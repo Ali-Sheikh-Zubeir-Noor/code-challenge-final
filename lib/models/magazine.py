@@ -1,5 +1,5 @@
-
 from lib.db.connection import get_connection
+from lib.models.author import Author
 
 class Magazine:
     def __init__(self, id=None, name=None, category=None):
@@ -90,3 +90,32 @@ class Magazine:
         authors = cursor.fetchall()
         conn.close()
         return authors
+
+    @classmethod
+    def with_multiple_authors(cls):
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT m.* FROM magazines m
+            JOIN articles a ON m.id = a.magazine_id
+            GROUP BY m.id
+            HAVING COUNT(DISTINCT a.author_id) > 1
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return [cls(row["id"], row["name"], row["category"]) for row in rows]
+
+    @classmethod
+    def article_counts(cls):
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT m.id, m.name, m.category, COUNT(a.id) as article_count
+            FROM magazines m
+            LEFT JOIN articles a ON m.id = a.magazine_id
+            GROUP BY m.id
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+
