@@ -1,13 +1,16 @@
-
-import sqlite3
-
 def setup_database():
-    conn = sqlite3.connect('lib/db/app.db')
+    conn = sqlite3.connect("project.db")
+    cursor = conn.cursor()
+
     with open("lib/db/schema.sql", "r") as f:
-        conn.executescript(f.read())
+        schema = f.read()
+        cursor.executescript(schema)
+
     conn.commit()
     conn.close()
     print("Database setup complete.")
+
+    
 
 if __name__ == "__main__":
     setup_database()

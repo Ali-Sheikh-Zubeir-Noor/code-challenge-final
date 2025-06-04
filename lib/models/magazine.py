@@ -1,133 +1,156 @@
-from lib.db.connection import get_connection
+import sqlite3
+
 
 class Magazine:
-    def __init__(self, id=None, name=None, category=None):
-        self.id = id
+    magazine_categories = [
+        "Fashion & Lifestyle", "Technology & Gadgets", "Health & Fitness",
+        "News & Politics", "Business & Finance", "Entertainment & Pop Culture",
+        "Travel & Adventure", "Home & Garden", "Science & Nature",
+        "Food & Cooking", "Hobbies & Interests", "Literature & Culture"
+    ]
+
+    def __init__(self, name, category, id=None):
+        if not isinstance(name, str) or not (0 < len(name) <= 255):
+            raise ValueError("Magazine name must be a non-empty string up to 255 characters")
+        # if category not in Magazine.magazine_categories:
+        #     raise ValueError("Invalid category.")
         self.name = name
         self.category = category
+        self.id = id
+
+    def __repr__(self):
+        return f"<Magazine id={self.id} name='{self.name}' category='{self.category}'>"
 
     def save(self):
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            if self.id is None:
-                cursor.execute(
-                    "INSERT INTO magazines (name, category) VALUES (?, ?)",
-                    (self.name, self.category)
-                )
-                self.id = cursor.lastrowid
-            else:
-                cursor.execute(
-                    "UPDATE magazines SET name = ?, category = ? WHERE id = ?",
-                    (self.name, self.category, self.id)
-                )
-            conn.commit()
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        if self.id is None:
+            cur.execute("INSERT INTO magazines (name, category) VALUES (?, ?)", (self.name, self.category))
+            self.id = cur.lastrowid
+        else:
+            cur.execute("UPDATE magazines SET name=?, category=? WHERE id=?", (self.name, self.category, self.id))
+        conn.commit()
+        conn.close()
+
+    def articles(self):
+        from .article import Article
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        rows = cur.execute("SELECT * FROM articles WHERE magazine_id=?", (self.id,)).fetchall()
+        conn.close()
+        return [Article(id=row[0], title=row[1], author_id=row[2], magazine_id=row[3]) for row in rows]
+
+    def contributors(self):
+        from .author import Author
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        rows = cur.execute("""
+            SELECT DISTINCT a.id, a.name
+            FROM authors a
+            INNER JOIN articles ar ON a.id = ar.author_id
+            WHERE ar.magazine_id = ?
+        """, (self.id,)).fetchall()
+        conn.close()
+        return [Author(id=row[0], name=row[1]) for row in rows]
+
+    def article_titles(self):
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        rows = cur.execute("SELECT title FROM articles WHERE magazine_id=?", (self.id,)).fetchall()
+        conn.close()
+        return [row[0] for row in rows]
+
+    def contributing_authors(self):
+        from .author import Author
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        rows = cur.execute("""
+            SELECT a.id, a.name, COUNT(*) AS article_count
+            FROM authors a
+            INNER JOIN articles ar ON a.id = ar.author_id
+            WHERE ar.magazine_id = ?
+            GROUP BY a.id
+            HAVING article_count > 2
+        """, (self.id,)).fetchall()
+        conn.close()
+        return [Author(id=row[0], name=row[1]) for row in rows]
+
+    @classmethod
+    def find_by_id(cls, mag_id):
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        row = cur.execute("SELECT * FROM magazines WHERE id=?", (mag_id,)).fetchone()
+        conn.close()
+        if row:
+            return cls(id=row[0], name=row[1], category=row[2])
+        return None
 
     @classmethod
     def find_by_name(cls, name):
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM magazines WHERE name = ?", (name,))
-            row = cursor.fetchone()
-        return cls(id=row['id'], name=row['name'], category=row['category']) if row else None
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        row = cur.execute("SELECT * FROM magazines WHERE name=?", (name,)).fetchone()
+        conn.close()
+        if row:
+            return cls(id=row[0], name=row[1], category=row[2])
+        return None
 
     @classmethod
     def find_by_category(cls, category):
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM magazines WHERE category = ?", (category,))
-            rows = cursor.fetchall()
-        return [cls(id=row['id'], name=row['name'], category=row['category']) for row in rows]
-
-    @classmethod
-    def find_by_id(cls, id_):
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM magazines WHERE id = ?", (id_,))
-            row = cursor.fetchone()
-        return cls(id=row['id'], name=row['name'], category=row['category']) if row else None
-
-    def articles(self):
-        from lib.models.article import Article
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM articles WHERE magazine_id = ?", (self.id,))
-            rows = cursor.fetchall()
-        return [Article(id=row['id'], title=row['title'], author_id=row['author_id'], magazine_id=row['magazine_id']) for row in rows]
-
-    def contributors(self):
-        from lib.models.author import Author
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT DISTINCT authors.id, authors.name FROM authors
-                JOIN articles ON authors.id = articles.author_id
-                WHERE articles.magazine_id = ?
-            """, (self.id,))
-            rows = cursor.fetchall()
-        return [Author(id=row['id'], name=row['name']) for row in rows]
-
-    def article_titles(self):
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT title FROM articles WHERE magazine_id = ?", (self.id,))
-            return [row['title'] for row in cursor.fetchall()]
-
-    def contributing_authors(self):
-        from lib.models.author import Author
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT authors.id, authors.name, COUNT(articles.id) AS article_count
-                FROM authors
-                JOIN articles ON authors.id = articles.author_id
-                WHERE articles.magazine_id = ?
-                GROUP BY authors.id
-                HAVING article_count > 2
-            """, (self.id,))
-            rows = cursor.fetchall()
-        return [Author(id=row['id'], name=row['name']) for row in rows]
-
-    @classmethod
-    def with_multiple_authors(cls):
-        """Magazines that have at least 2 distinct authors contributing articles."""
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT magazines.id, magazines.name, magazines.category
-                FROM magazines
-                JOIN articles ON magazines.id = articles.magazine_id
-                GROUP BY magazines.id
-                HAVING COUNT(DISTINCT articles.author_id) >= 2
-            """)
-            rows = cursor.fetchall()
-        return [cls(id=row['id'], name=row['name'], category=row['category']) for row in rows]
-
-    @classmethod
-    def article_counts(cls):
-        """All magazines with their article counts (LEFT JOIN ensures 0-count magazines are included)."""
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT magazines.id, magazines.name, magazines.category, COUNT(articles.id) AS article_count
-                FROM magazines
-                LEFT JOIN articles ON magazines.id = articles.magazine_id
-                GROUP BY magazines.id
-            """)
-            rows = cursor.fetchall()
-        return [cls(id=row['id'], name=row['name'], category=row['category']) for row in rows]
+        # if category not in cls.magazine_categories:
+        #     raise ValueError("Invalid category.")
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        rows = cur.execute("SELECT * FROM magazines WHERE category=?", (category,)).fetchall()
+        conn.close()
+        return [cls(id=row[0], name=row[1], category=row[2]) for row in rows]
 
     @classmethod
     def top_publisher(cls):
-        """Returns the magazine with the highest number of articles published."""
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT magazines.id, magazines.name, magazines.category, COUNT(articles.id) AS article_count
-                FROM magazines
-                LEFT JOIN articles ON magazines.id = articles.magazine_id
-                GROUP BY magazines.id
-                ORDER BY article_count DESC
-                LIMIT 1
-            """)
-            row = cursor.fetchone()
-        return cls(id=row['id'], name=row['name'], category=row['category']) if row else None
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        row = cur.execute(
+            """
+            SELECT m.id, m.name, m.category, COUNT(*) AS count
+            FROM articles a
+            INNER JOIN magazines m ON m.id = a.magazine_id
+            GROUP BY m.id
+            ORDER BY count DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        conn.close()
+        if row:
+            return cls(id=row[0], name=row[1], category=row[2])
+        else:
+            return None
+
+    @classmethod
+    def with_multiple_authors(cls):
+        """
+        Return magazines with articles written by more than one distinct author.
+        """
+        conn = sqlite3.connect("project.db")
+        cur = conn.cursor()
+        rows = cur.execute("""
+            SELECT m.id, m.name, m.category
+            FROM magazines m
+            JOIN articles a ON m.id = a.magazine_id
+            GROUP BY m.id
+            HAVING COUNT(DISTINCT a.author_id) > 1
+        """).fetchall()
+        conn.close()
+        return [cls(id=row[0], name=row[1], category=row[2]) for row in rows]
+    @classmethod
+    def article_counts(cls):
+        conn = sqlite3.connect("project.db")
+        conn.row_factory = sqlite3.Row  
+        cur = conn.cursor()
+        rows = cur.execute("""
+            SELECT m.id, m.name, m.category, COUNT(a.id) as article_count
+            FROM magazines m
+            LEFT JOIN articles a ON m.id = a.magazine_id
+            GROUP BY m.id
+        """).fetchall()
+        conn.close()
+        return rows
